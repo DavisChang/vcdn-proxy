@@ -1,5 +1,5 @@
 FROM nginx:1.14.0-alpine
-LABEL owner_team=NiceSkin
+LABEL maintainer="Davis Chang <DavisChang1030@gmail.com>"
 
 RUN apk add --no-cache --upgrade nginx-mod-http-perl
 
