@@ -1,0 +1,89 @@
+user  nginx;
+worker_processes  1;
+
+error_log  /var/log/nginx/error.log warn;
+pid        /var/run/nginx.pid;
+
+load_module /etc/nginx/modules/ngx_http_perl_module.so;
+
+env YOUR_ENV;
+env API_DOMAIN;
+
+events {
+    worker_connections  1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+    sendfile        on;
+    #tcp_nopush     on;
+
+    keepalive_timeout  65;
+
+    perl_set $YOUR_ENV 'sub { return $ENV{"YOUR_ENV"}; }';
+    perl_set $API_DOMAIN 'sub { return $ENV{"API_DOMAIN"}; }';
+
+    #gzip  on;
+
+    #include /etc/nginx/conf.d/*.conf;
+    server {
+        listen      80;
+        server_name server_name;
+        client_max_body_size 1G;
+
+        root /app;
+
+        gzip on;
+        gzip_min_length  1000;
+        gzip_types      text/plain text/xml application/xml text/javascript application/x-javascript
+                        text/css application/javascript
+                        application/x-font-ttf font/opentype
+                        application/vnd.ms-fontobject font/x-woff image/svg+xml;
+        gzip_disable     "MSIE [1-6]\.";
+        gzip_vary        on;
+        gzip_http_version 1.0;
+
+        resolver 8.8.8.8;
+
+        real_ip_header      X-FORWARDED-FOR;
+        real_ip_recursive   on;
+        set_real_ip_from    10.0.0.0/8;
+
+        proxy_set_header    Host $host;
+        proxy_set_header    X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header    X-Forwarded-Proto https;
+        proxy_set_header    X-Real-IP $remote_addr;
+
+        # health check
+        location /_health {
+          add_header Content-Type text/plain;
+          return 200 "OK";
+        }
+
+        location /_env {
+          add_header Content-Type text/plain;
+          return 200 "
+            YOUR_ENV: $YOUR_ENV
+            API_DOMAIN: $API_DOMAIN
+          ";
+        }
+
+        location ~ "^/api/" {
+          rewrite ^/(.*)$ /$1 break;
+          proxy_set_header Access-Control-Allow-Origin: *;
+          proxy_set_header Access-Control-Allow-Methods: POST,GET,PUT,DELETE;
+          proxy_pass $API_DOMAIN;
+        }
+
+        location / {
+          add_header Content-Type text/plain;
+          return 200 "Hello!";
+        }
+    }
+}
